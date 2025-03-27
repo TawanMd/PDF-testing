@@ -16,12 +16,13 @@ def validar_linha(linha):
       - Último token: não é validado.
     Retorna (True, "") se válida ou (False, mensagem_de_erro) se inválida.
     """
-    tokens = linha.split()
+    tokens = linha.split() # Divide a linha em tokens
+    # Verifica se a linha tem o número mínimo de tokens
     if len(tokens) < 5:
         return False, "Número incorreto de tokens (esperado no mínimo 5 tokens)"
     
-    code = tokens[0]
-    classification = tokens[1]
+    codigo = tokens[0]
+    classificacao = tokens[1]
     description_tokens = tokens[3:-1]  # Descrição vai do 4º token até o penúltimo
 
     if not description_tokens:
@@ -29,10 +30,10 @@ def validar_linha(linha):
     
     description = " ".join(description_tokens)
 
-    if not re.fullmatch(r'\d+(?:\.\d+)*', code):
+    if not re.fullmatch(r'\d+(?:\.\d+)*', codigo):
         return False, "Código inválido (deve ser um número, podendo conter várias sequências separadas por pontos)"
     
-    if not re.fullmatch(r'\d+(?:\.\d+)*', classification):
+    if not re.fullmatch(r'\d+(?:\.\d+)*', classificacao):
         return False, "Classificação inválida (deve ser um número, podendo conter várias sequências separadas por pontos)"
     
     if not re.search(r'[A-Za-z]', description):
