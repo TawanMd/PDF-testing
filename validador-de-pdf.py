@@ -2,6 +2,14 @@ import pdfplumber
 import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
+# Custom exception for fatal validation errors
+class FatalValidationError(Exception):
+    pass
+
+# Global variables to store results
+g_non_fatal_errors = []
+g_fatal_error_message = None
+
 
 def validar_linha(linha):
     """
@@ -46,7 +54,9 @@ def validar_linha(linha):
     return True, ""
 
 def verificar_pdf(nome_arquivo, progress_label):
-    erros = []
+    global g_non_fatal_errors, g_fatal_error_message
+    g_non_fatal_errors = [] # Reset errors for this run
+    g_fatal_error_message = None # Reset fatal error for this run
     linha_global = 0
     try:
         with pdfplumber.open(nome_arquivo) as pdf:
@@ -65,78 +75,138 @@ def verificar_pdf(nome_arquivo, progress_label):
                         continue
                     valida, motivo = validar_linha(linha)
                     if not valida:
-                        erros.append({
-                            "pagina": num_pagina,
-                            "linha_global": linha_global,
-                            "conteudo": linha,
-                            "motivo": motivo
-                        })
+                        if motivo.startswith("Descrição possivelmente contém informação grudada"):
+                            g_non_fatal_errors.append({ # Store in global list
+                                "pagina": num_pagina,
+                                "linha_global": linha_global,
+                                "conteudo": linha,
+                                "motivo": motivo
+                            })
+                        else:
+                            error_message = (f"Erro fatal de validação na Página {num_pagina}, Linha {linha_global}:\n"
+                                             f"Conteúdo: {linha}\n"
+                                             f"Motivo: {motivo}")
+                            raise FatalValidationError(error_message) # Raise fatal error
         progress_label.config(text="Processamento concluído.")
-        return erros
+        return "success" if not g_non_fatal_errors else "non_fatal_errors" # Return status
+    except FatalValidationError as fve:
+        g_fatal_error_message = str(fve) # Store fatal error message
+        messagebox.showerror("Erro Fatal de Validação", g_fatal_error_message)
+        progress_label.config(text="Processamento interrompido por erro fatal.")
+        return "fatal_error" # Return status
     except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao ler o PDF:\n{str(e)}")
-        return None
+        g_fatal_error_message = f"Erro inesperado ao processar o PDF:\n{str(e)}" # Store unexpected error
+        messagebox.showerror("Erro Inesperado", g_fatal_error_message)
+        progress_label.config(text="Processamento interrompido por erro inesperado.")
+        return "fatal_error" # Return status (treat as fatal for export)
 
-def show_error_details(erros):
+def show_error_details(erros_list): # Renamed param for clarity
     window = tk.Toplevel()
-    window.title("Detalhes dos Erros")
+    window.title("Detalhes dos Erros Não Fatais")
     window.geometry("600x400")
 
     st = scrolledtext.ScrolledText(window, wrap=tk.WORD, font=("Helvetica", 10))
     st.pack(expand=True, fill=tk.BOTH)
 
-    st.insert(tk.END, "Foram encontrados os seguintes erros:\n\n")
-    for erro in erros:
-        info = (f"Página {erro['pagina']}, Linha {erro['linha_global']}: {erro['conteudo']}\n"
-                f" Motivo: {erro['motivo']}\n\n")
+    st.insert(tk.END, "Foram encontrados os seguintes erros não fatais (tokens 'grudados'):\n\n")
+    for erro in erros_list:
+        # Improved formatting
+        info = (f"[ERRO NÃO FATAL]\n"
+                f"  Página: {erro['pagina']}\n"
+                f"  Linha Aprox. no PDF: {erro['linha_global']}\n"
+                f"  Conteúdo: {erro['conteudo']}\n"
+                f"  Motivo: {erro['motivo']}\n\n")
         st.insert(tk.END, info)
 
     st.configure(state='disabled')
+    # Removed the save button from here
 
-    # Botão para salvar log
-    btn_save = tk.Button(window, text="Salvar Log de Erros", command=lambda: salvar_erros(erros), font=("Helvetica", 10))
-    btn_save.pack(pady=5)
+def salvar_erros(non_fatal_errors, fatal_error_message):
+    if not non_fatal_errors and not fatal_error_message:
+        messagebox.showwarning("Exportar Erros", "Não há erros registrados para exportar.")
+        return
 
-def salvar_erros(erros):
     file_path = filedialog.asksaveasfilename(
         defaultextension=".txt",
-        filetypes=[("Arquivo de Texto", "*.txt")],
-        title="Salvar Log de Erros"
+        filetypes=[("Arquivo de Texto", "*.txt"), ("Todos os Arquivos", "*.*")],
+        title="Salvar Log de Erros",
+        initialfile="erros_validacao.txt" # Suggest default name
     )
     if file_path:
-        with open(file_path, 'w', encoding='utf-8') as file:
-            file.write("Erros encontrados na análise do PDF:\n\n")
-            for erro in erros:
-                file.write(f"Página {erro['pagina']}, Linha {erro['linha_global']}: {erro['conteudo']}\n")
-                file.write(f"Motivo: {erro['motivo']}\n\n")
-        messagebox.showinfo("Sucesso", "Log de erros salvo com sucesso.")
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write("Log de Erros da Validação do PDF\n")
+                file.write("="*40 + "\n\n")
+
+                if fatal_error_message:
+                    file.write("[ERRO FATAL ENCONTRADO]\n")
+                    file.write("-" * 25 + "\n")
+                    file.write(f"{fatal_error_message}\n\n")
+                    file.write("O processamento foi interrompido devido a este erro.\n")
+                    file.write("Pode haver outros erros não fatais listados abaixo que ocorreram antes do erro fatal.\n\n")
+
+                if non_fatal_errors:
+                    file.write(f"[ERROS NÃO FATAIS (Tokens Grudados) - {len(non_fatal_errors)} encontrados]\n")
+                    file.write("-" * 45 + "\n\n")
+                    for erro in non_fatal_errors:
+                        file.write(f"Página: {erro['pagina']}, Linha Aprox.: {erro['linha_global']}\n")
+                        file.write(f"  Conteúdo: {erro['conteudo']}\n")
+                        file.write(f"  Motivo: {erro['motivo']}\n\n")
+                elif not fatal_error_message: # Only say this if no fatal error either
+                     file.write("Nenhum erro não fatal (token grudado) foi encontrado.\n")
+
+
+            messagebox.showinfo("Sucesso", f"Log de erros salvo com sucesso em:\n{file_path}")
+        except Exception as e:
+            messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar o arquivo de log:\n{str(e)}")
 
 def selecionar_arquivo():
+    global g_non_fatal_errors, g_fatal_error_message # Ensure access
     file_path = filedialog.askopenfilename(
         title="Selecione o arquivo PDF",
         filetypes=[("Arquivos PDF", "*.pdf")]
     )
     if file_path:
-        erros = verificar_pdf(file_path, progress_label)
-        if erros is not None:
-            if erros:
-                resposta = messagebox.askyesno("Erros encontrados",
-                                               "Foram encontrados erros em algumas linhas.\nDeseja ver os detalhes?")
-                if resposta:
-                    show_error_details(erros)
-            else:
-                messagebox.showinfo("Sucesso",
-                                    "Todas as linhas possuem código e descrição conforme o esperado.")
+        # Reset errors before processing
+        g_non_fatal_errors = []
+        g_fatal_error_message = None
+        btn_export.config(state=tk.DISABLED) # Disable export button initially
+
+        status = verificar_pdf(file_path, progress_label)
+
+        if status == "fatal_error":
+            # Fatal error occurred, enable export
+            btn_export.config(state=tk.NORMAL)
+        elif status == "non_fatal_errors":
+            # Non-fatal errors found, enable export and ask to view
+            btn_export.config(state=tk.NORMAL)
+            resposta = messagebox.askyesno("Erros Não Fatais Encontrados",
+                                           f"Foram encontrados {len(g_non_fatal_errors)} erros não fatais (tokens grudados).\nDeseja ver os detalhes?")
+            if resposta:
+                show_error_details(g_non_fatal_errors) # Pass the global list
+        elif status == "success":
+            # No errors found
+             messagebox.showinfo("Sucesso",
+                                 "Todas as linhas válidas ou ignoradas foram processadas sem erros fatais ou não fatais reportáveis.")
+             # Keep export button disabled as there's nothing to export
+# Add Export Button command function (before root.mainloop)
+def exportar_erros_registrados():
+    # This function will call the modified salvar_erros
+    salvar_erros(g_non_fatal_errors, g_fatal_error_message)
+
 
 # Interface gráfica
 root = tk.Tk()
 root.title("Validador de Plano de Contas")
-root.geometry("400x250")
+root.geometry("400x300") # Increased height slightly for new button
 
-btn = tk.Button(root, text="Selecionar arquivo PDF", command=selecionar_arquivo, font=("Helvetica", 12))
-btn.pack(expand=True, pady=10)
+btn_select = tk.Button(root, text="Selecionar arquivo PDF", command=selecionar_arquivo, font=("Helvetica", 12))
+btn_select.pack(pady=10)
 
 progress_label = tk.Label(root, text="Aguardando arquivo...", font=("Helvetica", 10))
-progress_label.pack()
+progress_label.pack(pady=5)
+
+btn_export = tk.Button(root, text="Exportar Erros", command=exportar_erros_registrados, font=("Helvetica", 10), state=tk.DISABLED)
+btn_export.pack(pady=10)
 
 root.mainloop()
