@@ -1,78 +1,71 @@
 # Validador de Plano de Contas em PDF
 
-## Descrição
+Ferramenta desktop em Python para validar automaticamente a estrutura, os códigos e a consistência de arquivos PDF de **Plano de Contas** contábeis antes da importação em sistemas ERP/contábeis.
 
-Esta ferramenta foi desenvolvida para validar a estrutura e a formatação de linhas dentro de arquivos PDF que representam um plano de contas. Ela utiliza uma interface gráfica simples para facilitar a seleção do arquivo e a visualização dos resultados.
+<!-- Adicione aqui um print ou GIF curto mostrando a janela selecionando um PDF e exibindo o relatório -->
+> 📸 **Demonstração:** adicione uma captura de tela da interface e de um log de validação exportado.
 
-## Funcionalidades Principais
+---
 
-*   **Interface Gráfica:** Permite ao usuário selecionar facilmente o arquivo PDF a ser validado.
-*   **Extração de Texto:** Utiliza a biblioteca `pdfplumber` para extrair o texto das páginas do PDF.
-*   **Validação Estrutural:** Verifica cada linha relevante (que começa com um dígito) de acordo com regras específicas:
-    *   Número mínimo de componentes (tokens) na linha.
-    *   Formato do código da conta (ex: `1`, `1.1`, `1.1.01`).
-    *   Formato da classificação da conta (mesmo formato do código).
-    *   Presença de letras na descrição da conta.
-*   **Detecção de Erros:**
-    *   **Erros Fatais:** Problemas que impedem a validação correta (ex: formato de código inválido, número incorreto de tokens, descrição sem letras). A validação é interrompida se um erro fatal for encontrado.
-    *   **Erros Não Fatais:** Avisos sobre possíveis problemas que não impedem a continuação da análise, especificamente a detecção de "tokens grudados" na descrição (sequências longas de letras e números misturados, ex: `DESPESA12345COM`).
-*   **Relatório de Erros:**
-    *   Exibe mensagens claras sobre erros fatais.
-    *   Notifica sobre a ocorrência de erros não fatais e permite visualizar os detalhes (página, linha aproximada, conteúdo e motivo).
-    *   Permite exportar um log completo (erros fatais e não fatais) para um arquivo de texto (`.txt`).
+## Contexto e Impacto
 
-## Como Usar
+A conferência manual de planos de contas em PDF com dezenas ou centenas de páginas era lenta e sujeita a falhas humanas (códigos fora do padrão, descrições corrompidas ou tokens colados na extração).
 
-Existem duas formas de utilizar o validador:
+- **Resultado prático:** aplicação utilizada internamente na operação contábil, **dobrando a velocidade de conferência (+100% de produtividade)** e padronizando o diagnóstico de erros antes do processamento.
+- **Usabilidade:** empacotada para rodar sem exigir terminal ou Python instalado no computador do usuário final.
 
-### 1. Usando o Executável (Recomendado)
+---
 
-A maneira mais simples é utilizar o executável pré-compilado.
+## O que o Validador Verifica
 
-1.  Navegue até a pasta `dist/` neste projeto.
-2.  Execute o arquivo `ValidadorPlanoContas.exe`.
-3.  Na janela do aplicativo, clique no botão "Selecionar arquivo PDF".
-4.  Escolha o arquivo PDF do plano de contas que deseja validar.
-5.  Aguarde o processamento. Uma mensagem indicará o progresso (`Processando página X/Y...`) e o resultado final (`Processamento concluído.`, `Erro fatal...`, etc.).
-6.  **Resultados:**
-    *   **Sucesso:** Se nenhuma inconsistência grave for encontrada, uma mensagem de sucesso será exibida.
-    *   **Erros Não Fatais:** Se apenas avisos (tokens grudados) forem encontrados, você será notificado e terá a opção de visualizar os detalhes. O botão "Exportar Erros" ficará ativo.
-    *   **Erro Fatal:** Se um erro estrutural grave for encontrado, a validação para, uma mensagem de erro é exibida, e o botão "Exportar Erros" fica ativo para salvar o log contendo o erro fatal.
-7.  Clique em "Exportar Erros" (se habilitado) para salvar um arquivo `.txt` com o detalhamento de todos os problemas encontrados.
+Utilizando `pdfplumber` para extração linha a linha, o script (`validador-de-pdf.py`) analisa linhas iniciadas por dígito e separa inconsistências em dois níveis:
 
-### 2. Executando o Script Python Diretamente
+1. **Erros Fatais** *(interrompem a validação por comprometerem a estrutura do plano)*:
+   - Número mínimo de tokens/colunas ausente na linha;
+   - Formato inválido do código da conta ou da classificação contábil (ex.: `1`, `1.1`, `1.1.01`);
+   - Descrição da conta sem caracteres alfabéticos.
+2. **Avisos / Erros Não Fatais**:
+   - Detecção de "tokens grudados" na descrição (sequências longas alfanuméricas misturadas geradas por PDFs mal formatados).
+3. **Exportação de Log**:
+   - Gera arquivo `.txt` detalhando página, linha aproximada, conteúdo e motivo para correção rápida.
 
-Se preferir ou precisar executar o código fonte:
+---
 
-1.  **Pré-requisitos:**
-    *   Tenha o [Python](https://www.python.org/) instalado (versão 3.x recomendada).
-    *   Instale a biblioteca `pdfplumber` necessária. Abra seu terminal ou prompt de comando e execute:
-        ```bash
-        pip install pdfplumber
-        ```
-        *(A biblioteca `tkinter` geralmente já vem incluída na instalação padrão do Python).*
-2.  **Execução:**
-    *   Navegue pelo terminal até a pasta onde o arquivo `validador-de-pdf.py` está localizado.
-    *   Execute o script com o comando:
-        ```bash
-        python validador-de-pdf.py
-        ```
-3.  A interface gráfica será aberta. Siga os mesmos passos 3 a 7 descritos na seção "Usando o Executável".
+## Stack Utilizada
 
-## Construindo o Executável (Opcional)
+- **Python 3**
+- **pdfplumber** (extração estruturada de texto de PDF)
+- **Tkinter** (interface gráfica nativa)
+- **PyInstaller** (`ValidadorPlanoContas.spec` para empacotamento em executável Windows)
 
-Caso queira gerar (ou regenerar) o arquivo `.exe` a partir do código fonte:
+---
 
-1.  **Pré-requisitos:**
-    *   Tenha o Python e o `pip` instalados.
-    *   Instale o `PyInstaller`. No terminal, execute:
-        ```bash
-        pip install pyinstaller
-        ```
-2.  **Construção:**
-    *   Navegue pelo terminal até a pasta raiz do projeto (onde está o arquivo `ValidadorPlanoContas.spec`).
-    *   Execute o comando:
-        ```bash
-        pyinstaller ValidadorPlanoContas.spec
-        ```
-3.  Após a conclusão, o executável `ValidadorPlanoContas.exe` estará localizado dentro da pasta `dist/`.
+## Como Executar via Código-Fonte
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/TawanMd/PDF-testing.git
+   cd PDF-testing
+   ```
+2. Crie um ambiente virtual e instale as dependências:
+   ```bash
+   python -m venv .venv
+   # Windows PowerShell:
+   .\.venv\Scripts\Activate.ps1
+   pip install pdfplumber
+   ```
+3. Execute a aplicação:
+   ```bash
+   python validador-de-pdf.py
+   ```
+
+### Gerar Executável Localmente (Opcional)
+
+> [!NOTE]
+> As pastas `build/`, `dist/` e arquivos `.exe` não devem ser versionados no repositório Git. Gere o executável localmente ou publique-o na aba **GitHub Releases**.
+
+```bash
+pip install pyinstaller
+pyinstaller ValidadorPlanoContas.spec
+```
+O arquivo gerado ficará localmente em `dist/ValidadorPlanoContas.exe`.
